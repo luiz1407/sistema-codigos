@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Admin</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<div class="container">
+    <div class="card grande">
+
+        <h1>Painel Administrativo</h1>
+
+        <a href="/gerar_codigo">
+            <button>Gerar Novo Código</button>
+        </a>
+
+        <table>
+            <tr>
+                <th>ID</th>
+                <th>Código</th>
+                <th>Status</th>
+                <th>Ação</th>
+            </tr>
+
+            {% for codigo in codigos %}
+            <tr>
+                <td>{{ codigo.id }}</td>
+                <td>{{ codigo.codigo }}</td>
+                <td>
+                    {% if codigo.ativo %}
+                        Ativo
+                    {% else %}
+                        Desativado
+                    {% endif %}
+                </td>
+                <td>
+                    <a href="/desativar/{{ codigo.id }}">
+                        Desativar
+                    </a>
+                </td>
+            </tr>
+            {% endfor %}
+
+        </table>
+
+    </div>
+</div>
+
+</body>
+</html>

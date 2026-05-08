@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Login</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<div class="container">
+    <div class="card">
+        <h1>Acesso Restrito</h1>
+
+        {% if erro %}
+            <div class="erro">{{ erro }}</div>
+        {% endif %}
+
+        <form method="POST" action="/login">
+            <input type="text" name="codigo" placeholder="Digite seu código" required>
+            <button type="submit">Entrar</button>
+        </form>
+    </div>
+</div>
+
+</body>
+</html>
