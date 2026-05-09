@@ -1,110 +1,220 @@
-from flask import Flask, render_template, request, redirect, session
-from flask_sqlalchemy import SQLAlchemy
-from datetime import datetime
-import secrets
+from flask import Flask, render_template_string, request
+import pyotp
 
 app = Flask(__name__)
-app.secret_key = "super_secret_key_2026"
 
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+# ==========================================
+# CONTAS VINCULADAS
+# ==========================================
 
-db = SQLAlchemy(app)
+usuarios = {
 
+    "ggmaxvendassteam@gmail.com": {
+        "secret": "DD5CEWK6PNQGU2HACPWU6F5YDX2RNUSN",
+        "plataforma": "Google"
+    },
 
-class Codigo(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    codigo = db.Column(db.String(100), unique=True, nullable=False)
-    ativo = db.Column(db.Boolean, default=True)
-    criado_em = db.Column(db.DateTime, default=datetime.utcnow)
+    "warzone@gmail.com": {
+        "secret": "JBSWY3DPEHPK3PXP",
+        "plataforma": "Activision"
+    }
 
+}
 
-with app.app_context():
-    db.create_all()
+# ==========================================
+# HTML
+# ==========================================
 
-    if Codigo.query.count() == 0:
-        codigos_iniciais = [
-            "VIP123",
-            "PREMIUM2026",
-            "ACESSO777"
-        ]
+HTML = """
 
-        for c in codigos_iniciais:
-            novo = Codigo(codigo=c)
-            db.session.add(novo)
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
 
-        db.session.commit()
+    <meta charset="UTF-8">
 
+    <title>Gerador 2FA</title>
 
-@app.route('/')
-def login_page():
-    return render_template('login.html')
+    <style>
 
+        body{
+            background:#0f172a;
+            color:white;
+            font-family:Arial;
+            display:flex;
+            justify-content:center;
+            align-items:center;
+            height:100vh;
+            margin:0;
+        }
 
-@app.route('/login', methods=['POST'])
-def login():
-    codigo_digitado = request.form.get('codigo')
+        .card{
+            background:#1e293b;
+            padding:40px;
+            border-radius:15px;
+            width:380px;
+            box-shadow:0 0 25px rgba(0,0,0,0.4);
+        }
 
-    codigo = Codigo.query.filter_by(
-        codigo=codigo_digitado,
-        ativo=True
-    ).first()
+        h1{
+            text-align:center;
+            margin-bottom:25px;
+        }
 
-    if codigo:
-        session['acesso'] = True
-        session['codigo'] = codigo_digitado
-        return redirect('/painel')
+        input{
+            width:100%;
+            padding:14px;
+            border:none;
+            border-radius:8px;
+            margin-bottom:15px;
+            font-size:16px;
+            box-sizing:border-box;
+        }
 
-    return render_template(
-        'login.html',
-        erro='Código inválido'
-    )
+        button{
+            width:100%;
+            padding:14px;
+            background:#2563eb;
+            border:none;
+            border-radius:8px;
+            color:white;
+            font-size:16px;
+            cursor:pointer;
+        }
 
+        button:hover{
+            background:#1d4ed8;
+        }
 
-@app.route('/painel')
-def painel():
-    if not session.get('acesso'):
-        return redirect('/')
+        .codigo{
+            font-size:50px;
+            text-align:center;
+            margin-top:25px;
+            color:#4ade80;
+            font-weight:bold;
+        }
 
-    return render_template(
-        'painel.html',
-        codigo=session.get('codigo')
-    )
+        .erro{
+            background:#dc2626;
+            padding:12px;
+            border-radius:8px;
+            margin-top:20px;
+            text-align:center;
+        }
 
+        .info{
+            text-align:center;
+            margin-top:10px;
+            color:#cbd5e1;
+        }
 
-@app.route('/logout')
-def logout():
-    session.clear()
-    return redirect('/')
+    </style>
 
+</head>
+<body>
 
-@app.route('/admin')
-def admin():
-    codigos = Codigo.query.all()
-    return render_template('admin.html', codigos=codigos)
+<div class="card">
 
+    <h1>Gerador 2FA</h1>
 
-@app.route('/gerar_codigo')
-def gerar_codigo():
-    novo_codigo = secrets.token_hex(4).upper()
+    <form method="POST">
 
-    novo = Codigo(codigo=novo_codigo)
-    db.session.add(novo)
-    db.session.commit()
+        <input
+            type="email"
+            name="email"
+            placeholder="Digite seu email"
+            required
+        >
 
-    return redirect('/admin')
+        <button type="submit">
+            Gerar Código
+        </button>
 
+    </form>
 
-@app.route('/desativar/<int:id>')
-def desativar(id):
-    codigo = Codigo.query.get(id)
+    {% if codigo %}
 
-    if codigo:
-        codigo.ativo = False
-        db.session.commit()
+        <div class="codigo">
+            {{ codigo }}
+        </div>
 
-    return redirect('/admin')
+        <div class="info">
+            {{ email }}
+        </div>
 
+        <div class="info">
+            Plataforma: {{ plataforma }}
+        </div>
+
+    {% endif %}
+
+    {% if erro %}
+
+        <div class="erro">
+            {{ erro }}
+        </div>
+
+    {% endif %}
+
+</div>
+
+</body>
+</html>
+
+"""
+
+# ==========================================
+# ROTAS
+# ==========================================
+
+@app.route('/', methods=['GET', 'POST'])
+def home():
+
+    if request.method == 'POST':
+
+        email = request.form.get('email')
+
+        # verifica email
+        if email not in usuarios:
+
+            return render_template_string(
+                HTML,
+                erro='Email não encontrado'
+            )
+
+        try:
+
+            dados = usuarios[email]
+
+            secret = dados["secret"]
+
+            plataforma = dados["plataforma"]
+
+            # cria TOTP
+            totp = pyotp.TOTP(secret)
+
+            # gera código
+            codigo = totp.now()
+
+            return render_template_string(
+                HTML,
+                codigo=codigo,
+                email=email,
+                plataforma=plataforma
+            )
+
+        except Exception as e:
+
+            return render_template_string(
+                HTML,
+                erro=f'Erro ao gerar código: {str(e)}'
+            )
+
+    return render_template_string(HTML)
+
+# ==========================================
+# INICIAR SERVIDOR
+# ==========================================
 
 if __name__ == '__main__':
     app.run(debug=True)
