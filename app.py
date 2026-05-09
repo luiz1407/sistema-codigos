@@ -1,5 +1,6 @@
-from flask import Flask, request, redirect, session, render_template_string
+from flask import Flask, request, redirect, session, render_template_string, jsonify
 from flask_sqlalchemy import SQLAlchemy
+from flask_cors import CORS
 import pyotp
 
 # =========================================
@@ -7,6 +8,8 @@ import pyotp
 # =========================================
 
 app = Flask(__name__)
+
+CORS(app)
 
 app.secret_key = "admin_secret_2026"
 
@@ -232,6 +235,33 @@ def logout():
     session.clear()
 
     return redirect('/')
+
+# =========================================
+# API
+# =========================================
+
+@app.route('/api/contas')
+
+def api_contas():
+
+    contas = Conta.query.all()
+
+    resultado = []
+
+    for conta in contas:
+
+        codigo = pyotp.TOTP(conta.secret).now()
+
+        resultado.append({
+
+            "id": conta.id,
+            "email": conta.email,
+            "plataforma": conta.plataforma,
+            "codigo": codigo
+
+        })
+
+    return jsonify(resultado)
 
 # =========================================
 # START
