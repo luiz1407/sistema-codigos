@@ -270,3 +270,9 @@ def api_contas():
 if __name__ == '__main__':
 
     app.run(debug=True)
+
+@app.route('/teste')
+
+def teste():
+
+    return 'FUNCIONANDO'
