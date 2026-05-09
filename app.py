@@ -1,220 +1,242 @@
-from flask import Flask, render_template_string, request
+from flask import Flask, request, redirect, session, render_template_string
+from flask_sqlalchemy import SQLAlchemy
 import pyotp
+
+# =========================================
+# APP
+# =========================================
 
 app = Flask(__name__)
 
-# ==========================================
-# CONTAS VINCULADAS
-# ==========================================
+app.secret_key = "admin_secret_2026"
 
-usuarios = {
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-    "ggmaxvendassteam@gmail.com": {
-        "secret": "DD5CEWK6PNQGU2HACPWU6F5YDX2RNUSN",
-        "plataforma": "Google"
-    },
+# =========================================
+# DATABASE
+# =========================================
 
-    "warzone@gmail.com": {
-        "secret": "JBSWY3DPEHPK3PXP",
-        "plataforma": "Activision"
-    }
+db = SQLAlchemy(app)
 
-}
+# =========================================
+# TABELA
+# =========================================
 
-# ==========================================
-# HTML
-# ==========================================
+class Conta(db.Model):
 
-HTML = """
+    id = db.Column(db.Integer, primary_key=True)
 
-<!DOCTYPE html>
-<html lang="pt-br">
-<head>
+    email = db.Column(db.String(120), unique=True)
 
-    <meta charset="UTF-8">
+    secret = db.Column(db.String(120))
 
-    <title>Gerador 2FA</title>
+    plataforma = db.Column(db.String(50))
 
-    <style>
+# =========================================
+# CRIAR BANCO
+# =========================================
 
-        body{
-            background:#0f172a;
-            color:white;
-            font-family:Arial;
-            display:flex;
-            justify-content:center;
-            align-items:center;
-            height:100vh;
-            margin:0;
-        }
+with app.app_context():
+    db.create_all()
 
-        .card{
-            background:#1e293b;
-            padding:40px;
-            border-radius:15px;
-            width:380px;
-            box-shadow:0 0 25px rgba(0,0,0,0.4);
-        }
+# =========================================
+# LOGIN ADMIN
+# =========================================
 
-        h1{
-            text-align:center;
-            margin-bottom:25px;
-        }
+ADMIN_USER = "admin"
 
-        input{
-            width:100%;
-            padding:14px;
-            border:none;
-            border-radius:8px;
-            margin-bottom:15px;
-            font-size:16px;
-            box-sizing:border-box;
-        }
+ADMIN_PASS = "123456"
 
-        button{
-            width:100%;
-            padding:14px;
-            background:#2563eb;
-            border:none;
-            border-radius:8px;
-            color:white;
-            font-size:16px;
-            cursor:pointer;
-        }
+# =========================================
+# HTML LOGIN
+# =========================================
 
-        button:hover{
-            background:#1d4ed8;
-        }
+LOGIN_HTML = """
 
-        .codigo{
-            font-size:50px;
-            text-align:center;
-            margin-top:25px;
-            color:#4ade80;
-            font-weight:bold;
-        }
+<h1>Login Admin</h1>
 
-        .erro{
-            background:#dc2626;
-            padding:12px;
-            border-radius:8px;
-            margin-top:20px;
-            text-align:center;
-        }
+<form method="POST">
 
-        .info{
-            text-align:center;
-            margin-top:10px;
-            color:#cbd5e1;
-        }
+<input type="text" name="user" placeholder="Usuário">
+<br><br>
 
-    </style>
+<input type="password" name="pass" placeholder="Senha">
+<br><br>
 
-</head>
-<body>
+<button type="submit">Entrar</button>
 
-<div class="card">
-
-    <h1>Gerador 2FA</h1>
-
-    <form method="POST">
-
-        <input
-            type="email"
-            name="email"
-            placeholder="Digite seu email"
-            required
-        >
-
-        <button type="submit">
-            Gerar Código
-        </button>
-
-    </form>
-
-    {% if codigo %}
-
-        <div class="codigo">
-            {{ codigo }}
-        </div>
-
-        <div class="info">
-            {{ email }}
-        </div>
-
-        <div class="info">
-            Plataforma: {{ plataforma }}
-        </div>
-
-    {% endif %}
-
-    {% if erro %}
-
-        <div class="erro">
-            {{ erro }}
-        </div>
-
-    {% endif %}
-
-</div>
-
-</body>
-</html>
+</form>
 
 """
 
-# ==========================================
-# ROTAS
-# ==========================================
+# =========================================
+# HTML ADMIN
+# =========================================
+
+ADMIN_HTML = """
+
+<h1>Painel Admin</h1>
+
+<a href="/logout">Sair</a>
+
+<hr>
+
+<h2>Adicionar Conta</h2>
+
+<form method="POST" action="/add">
+
+<input name="email" placeholder="Email">
+<br><br>
+
+<input name="secret" placeholder="Secret">
+<br><br>
+
+<input name="plataforma" placeholder="Plataforma">
+<br><br>
+
+<button type="submit">Adicionar</button>
+
+</form>
+
+<hr>
+
+<h2>Contas</h2>
+
+{% for conta in contas %}
+
+<div style="margin-bottom:20px;border:1px solid #ccc;padding:10px;">
+
+<b>Email:</b> {{ conta.email }}
+<br>
+
+<b>Plataforma:</b> {{ conta.plataforma }}
+<br>
+
+{% set codigo = pyotp.TOTP(conta.secret).now() %}
+
+<b>Código:</b>
+
+<h2>{{ codigo }}</h2>
+
+<a href="/delete/{{ conta.id }}">Remover</a>
+
+</div>
+
+{% endfor %}
+
+"""
+
+# =========================================
+# LOGIN
+# =========================================
 
 @app.route('/', methods=['GET', 'POST'])
-def home():
+
+def login():
 
     if request.method == 'POST':
 
-        email = request.form.get('email')
+        user = request.form.get('user')
 
-        # verifica email
-        if email not in usuarios:
+        senha = request.form.get('pass')
 
-            return render_template_string(
-                HTML,
-                erro='Email não encontrado'
-            )
+        if user == ADMIN_USER and senha == ADMIN_PASS:
 
-        try:
+            session['admin'] = True
 
-            dados = usuarios[email]
+            return redirect('/admin')
 
-            secret = dados["secret"]
+    return render_template_string(LOGIN_HTML)
 
-            plataforma = dados["plataforma"]
+# =========================================
+# ADMIN
+# =========================================
 
-            # cria TOTP
-            totp = pyotp.TOTP(secret)
+@app.route('/admin')
 
-            # gera código
-            codigo = totp.now()
+def admin():
 
-            return render_template_string(
-                HTML,
-                codigo=codigo,
-                email=email,
-                plataforma=plataforma
-            )
+    if not session.get('admin'):
 
-        except Exception as e:
+        return redirect('/')
 
-            return render_template_string(
-                HTML,
-                erro=f'Erro ao gerar código: {str(e)}'
-            )
+    contas = Conta.query.all()
 
-    return render_template_string(HTML)
+    return render_template_string(
+        ADMIN_HTML,
+        contas=contas,
+        pyotp=pyotp
+    )
 
-# ==========================================
-# INICIAR SERVIDOR
-# ==========================================
+# =========================================
+# ADD CONTA
+# =========================================
+
+@app.route('/add', methods=['POST'])
+
+def add():
+
+    if not session.get('admin'):
+
+        return redirect('/')
+
+    email = request.form.get('email')
+
+    secret = request.form.get('secret')
+
+    plataforma = request.form.get('plataforma')
+
+    nova = Conta(
+        email=email,
+        secret=secret,
+        plataforma=plataforma
+    )
+
+    db.session.add(nova)
+
+    db.session.commit()
+
+    return redirect('/admin')
+
+# =========================================
+# DELETE
+# =========================================
+
+@app.route('/delete/<int:id>')
+
+def delete(id):
+
+    if not session.get('admin'):
+
+        return redirect('/')
+
+    conta = Conta.query.get(id)
+
+    if conta:
+
+        db.session.delete(conta)
+
+        db.session.commit()
+
+    return redirect('/admin')
+
+# =========================================
+# LOGOUT
+# =========================================
+
+@app.route('/logout')
+
+def logout():
+
+    session.clear()
+
+    return redirect('/')
+
+# =========================================
+# START
+# =========================================
 
 if __name__ == '__main__':
+
     app.run(debug=True)
